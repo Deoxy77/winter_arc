@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Winter Arc: progress graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef2f4; --surface: #f8fafb; --cell: #dfe8ed; --ink: #15212b; --muted: #556674;
+    --line: #c9d7df; --ember: #d9481f; --on-ember: #ffffff;
+    --display: "Bricolage Grotesque", "Trebuchet MS", "Helvetica Neue", Arial, sans-serif;
+    --body: "Instrument Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1620; --surface: #14212c; --cell: #1b2c39; --ink: #e6eef3;
+      --muted: #8da0ae; --line: #24373f; --ember: #ff6a3d; --on-ember: #1a0a04;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1620; --surface: #14212c; --cell: #1b2c39; --ink: #e6eef3;
+    --muted: #8da0ae; --line: #24373f; --ember: #ff6a3d; --on-ember: #1a0a04;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 40px 20px 72px; }
+  h1 { font-family: var(--display); font-weight: 800; font-size: clamp(3rem, 11vw, 6.5rem); line-height: .92; letter-spacing: -0.03em; margin: 0; }
+  h2 { font-family: var(--display); font-weight: 800; font-size: 1.35rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .status { margin: 18px 0 0; font-size: 1.15rem; color: var(--muted); }
+  .status strong { color: var(--ink); font-weight: 600; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); margin: 32px 0 36px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .stat { padding: 16px 16px 16px 0; }
+  .stat + .stat { padding-left: 16px; border-left: 1px solid var(--line); }
+  .stat b { display: block; font-family: var(--display); font-weight: 800; font-size: 2rem; line-height: 1.1; }
+  .stat span { color: var(--muted); font-size: .9rem; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px; margin-bottom: 24px; }
+  .sub { margin: 0 0 16px; color: var(--muted); font-size: .95rem; }
+  .empty { color: var(--muted); margin: 0; }
+
+  .top { margin-bottom: 24px; }
+  .top .panel { margin-bottom: 0; }
+
+
+  .overall { margin: -12px 0 32px; }
+  .overall .track { height: 14px; border-radius: 7px; background: var(--cell); overflow: hidden; }
+  .overall .track b { display: block; height: 100%; background: var(--ember); border-radius: 7px; transition: width .25s; }
+  .overall p { margin: 8px 0 0; color: var(--muted); font-size: .95rem; }
+  .overall p strong { color: var(--ink); font-weight: 600; }
+  .chart-box svg { width: 100%; height: auto; display: block; }
+  .chart-box text { fill: var(--muted); font-family: var(--body); font-size: 12px; }
+  .grid-line { stroke: var(--line); stroke-width: 1; }
+  .line-daily { fill: none; stroke: var(--ember); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+  .area-daily { fill: var(--ember); opacity: .12; stroke: none; }
+  .line-avg { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 6 5; }
+  .pt { fill: var(--ember); stroke: var(--surface); stroke-width: 2; }
+  .pt.sel { stroke: var(--ink); stroke-width: 2.5; }
+  .hit { fill: transparent; cursor: pointer; }
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; color: var(--muted); font-size: .85rem; margin-top: 10px; }
+  .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid var(--ember); vertical-align: middle; margin-right: 6px; }
+  .legend i.dash { border-top: 2px dashed var(--ink); }
+
+  .matrix-scroll { overflow-x: auto; padding-bottom: 6px; }
+  .mrow { display: flex; align-items: center; gap: 3px; margin-bottom: 3px; width: max-content; }
+  .mlabel { position: sticky; left: 0; z-index: 1; width: 140px; flex: none; background: var(--surface); padding-right: 8px; font-size: .9rem; }
+  .mlabel .nm { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .notice { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: .95rem; }
+  .notice:empty { display: none; }
+  .mini { height: 5px; border-radius: 3px; background: var(--cell); margin-top: 4px; overflow: hidden; }
+  .mini b { display: block; height: 100%; background: var(--ember); }
+  .mlabel small { color: var(--muted); font-size: .75rem; }
+  .mc { width: 22px; height: 26px; border-radius: 4px; background: var(--cell); border: 1px solid var(--line); padding: 0; flex: none; cursor: pointer; font-size: .8rem; font-weight: 700; line-height: 1; color: transparent; }
+  .mc:hover:not(:disabled) { border-color: var(--muted); }
+  .mc.on { background: var(--ember); border-color: var(--ember); color: var(--on-ember); }
+  .mc.future { opacity: .4; }
+  .mc:disabled { cursor: default; }
+  .mdays .mc span { position: static; display: block; text-align: center; font-size: .65rem; line-height: 16px; }
+  .mdays .mc.today span { color: var(--ink); font-weight: 700; }
+  .mc.today { border-color: var(--ink); }
+  .mc.col-sel { box-shadow: 0 0 0 2px var(--ink); }
+  .mhead .mc { background: transparent; border: 0; height: 16px; position: relative; cursor: default; }
+  .mhead .mc span { position: absolute; left: 0; top: 0; font-size: .75rem; color: var(--muted); white-space: nowrap; }
+
+  .edit-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .edit-row span { flex: 1; }
+  .add { display: flex; gap: 8px; margin-top: 14px; }
+  input[type="text"] { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  button { font: inherit; }
+  .btn { font-weight: 600; cursor: pointer; border-radius: 8px; padding: 10px 16px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); }
+  .quiet { cursor: pointer; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: .9rem; }
+  .quiet:hover { color: var(--ink); border-color: var(--muted); }
+  :focus-visible { outline: 3px solid var(--ember); outline-offset: 2px; }
+  .foot { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  @media (max-width: 820px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-child(3) { padding-left: 0; border-left: 0; }
+    .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Winter arc</h1>
+  <p class="status" id="status"></p>
+  <div class="stats" id="stats"></div>
+  <div class="overall" id="overall"></div>
+
+  <div class="top">
+    <section class="panel chart-box">
+      <h2>Daily progress</h2>
+      <p class="sub">Share of your habits completed each day. Click a point to highlight that day in the grid below.</p>
+      <div id="chart"></div>
+      <div class="legend">
+        <span><i></i>Daily completion</span>
+        <span><i class="dash"></i>7-day average</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Every task, every day</h2>
+    <p class="notice" id="notice"></p>
+    <p class="sub">Each row is a habit and each column is a day. Click a box to tick it. Ticking only works on today's real date, from October 1 to December 31. Each day locks at midnight, so a missed day stays empty. The bar under each habit shows how many days you have completed it.</p>
+    <div class="matrix-scroll"><div id="matrix"></div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Your habits</h2>
+    <p class="sub">Pick a few you can do every day. Changes apply to all days.</p>
+    <div id="habit-editor"></div>
+    <div class="add">
+      <input type="text" id="new-habit" placeholder="Add a habit" maxlength="60" aria-label="New habit name">
+      <button class="btn" id="add-btn">Add habit</button>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span class="empty">October 1 to December 31, 2026. Progress is saved in this browser.</span>
+    <button class="quiet" id="reset-btn">Reset challenge</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var START = new Date(2026, 9, 1);
+  var DAYS = 92;
+  var STORE = "winter-arc-v1";
+  var DEFAULT_HABITS = ["Workout", "Study for 2 hours", "Read 10 pages", "Sleep before 11 pm", "No doomscrolling"];
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  var state = load();
+  function defaults() { return { habits: DEFAULT_HABITS.map(function (n, i) { return { id: "h" + i, name: n }; }), done: {} }; }
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE);
+      if (raw) { var s = JSON.parse(raw); if (s && Array.isArray(s.habits) && s.done) return s; }
+    } catch (e) {}
+    return defaults();
+  }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+  function midnight(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function dayIndex(d) { return Math.round((midnight(d) - START) / 864e5); }
+  function dateAt(i) { return new Date(2026, 9, 1 + i); }
+  function keyAt(i) { var d = dateAt(i); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+  function fmtLong(i) { return dateAt(i).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }); }
+  function fmtShort(i) { return dateAt(i).toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
+
+  var todayIdx, last, editable, selected;
+  // The page follows the device's real calendar date.
+  // Ticking is only possible on today's column, and only from Oct 1 to Dec 31.
+  function setDay() {
+    todayIdx = dayIndex(new Date());
+    var inRange = todayIdx >= 0 && todayIdx < DAYS;
+    last = Math.min(Math.max(todayIdx, -1), DAYS - 1);
+    editable = inRange ? todayIdx : -1;
+    selected = inRange ? todayIdx : null;
+  }
+  setDay();
+
+  function doneIds(i) {
+    var ids = state.done[keyAt(i)] || [];
+    return state.habits.filter(function (h) { return ids.indexOf(h.id) !== -1; }).map(function (h) { return h.id; });
+  }
+  function ratio(i) { return state.habits.length ? doneIds(i).length / state.habits.length : 0; }
+  function isFull(i) { return state.habits.length > 0 && doneIds(i).length === state.habits.length; }
+
+  function toggle(i, id) {
+    var k = keyAt(i);
+    var ids = (state.done[k] || []).slice();
+    var at = ids.indexOf(id);
+    if (at === -1) ids.push(id); else ids.splice(at, 1);
+    state.done[k] = ids;
+    save(); renderAll();
+  }
+
+  function streaks() {
+    var best = 0, run = 0, i;
+    for (i = 0; i <= last; i++) { if (isFull(i)) { run++; if (run > best) best = run; } else run = 0; }
+    var cur = 0; i = last;
+    if (i >= 0 && !isFull(i) && i === last && todayIdx < DAYS) i--;
+    while (i >= 0 && isFull(i)) { cur++; i--; }
+    return { cur: cur, best: best };
+  }
+
+  function renderStatus() {
+    var el = document.getElementById("status");
+    var real = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    if (todayIdx < 0) {
+      var n = -todayIdx;
+      el.innerHTML = "<strong>" + (n === 1 ? "Starts tomorrow." : "Starts in " + n + " days.") + "</strong> Today is " + real + ".";
+    } else if (todayIdx >= DAYS) {
+      el.innerHTML = "<strong>The arc is complete.</strong> Today is " + real + ".";
+    } else {
+      var left = DAYS - 1 - todayIdx;
+      el.innerHTML = "<strong>Day " + (todayIdx + 1) + " of " + DAYS + ".</strong> " + (left === 0 ? "Last day." : left + " days left.") + " Today is " + real + ".";
+    }
+  }
+
+  function renderNotice() {
+    var el = document.getElementById("notice");
+    if (todayIdx < 0) el.textContent = "Ticking opens on " + fmtLong(0) + ". You can look around until then.";
+    else if (todayIdx >= DAYS) el.textContent = "The challenge ended on " + fmtLong(DAYS - 1) + ". This is your final record.";
+    else el.textContent = "";
+  }
+
+  function renderStats() {
+    var s = streaks(), full = 0, checks = 0, possible = 0;
+    for (var i = 0; i <= last; i++) { if (isFull(i)) full++; checks += doneIds(i).length; possible += state.habits.length; }
+    var pct = possible ? Math.round(checks / possible * 100) : 0;
+    var items = [[s.cur, "Current streak"], [s.best, "Best streak"], [full, "Perfect days"], [pct + "%", "Habits completed"]];
+    document.getElementById("stats").innerHTML = items.map(function (it) {
+      return '<div class="stat"><b>' + it[0] + "</b><span>" + it[1] + "</span></div>";
+    }).join("");
+  }
+
+  function renderOverall() {
+    var el = document.getElementById("overall");
+    var total = 0;
+    for (var i = 0; i <= last; i++) total += doneIds(i).length;
+    var max = state.habits.length * DAYS;
+    var pct = max ? Math.round(total / max * 100) : 0;
+    el.innerHTML = '<div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Overall challenge progress"><b style="width:' + pct + '%"></b></div>' +
+      "<p><strong>" + pct + "% of the whole arc.</strong> " + total + " of " + max + " check-ins done.</p>";
+  }
+
+  var lastFocus = null;
+
+  function svgEl(name, attrs) {
+    var el = document.createElementNS(SVGNS, name);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  function renderChart() {
+    var box = document.getElementById("chart");
+    box.innerHTML = "";
+    var W = 640, H = 300, L = 44, R = 14, T = 14, B = 34;
+    function X(i) { return L + i * (W - L - R) / (DAYS - 1); }
+    function Y(p) { return T + (1 - p) * (H - T - B); }
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Line chart of daily habit completion from October 1 to December 31" });
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (p) {
+      svg.appendChild(svgEl("line", { x1: L, x2: W - R, y1: Y(p), y2: Y(p), "class": "grid-line" }));
+      var t = svgEl("text", { x: L - 8, y: Y(p) + 4, "text-anchor": "end" });
+      t.textContent = Math.round(p * 100) + "%";
+      svg.appendChild(t);
+    });
+    [[0, "Oct 1", "start"], [31, "Nov 1", "middle"], [61, "Dec 1", "middle"], [91, "Dec 31", "end"]].forEach(function (m) {
+      var t = svgEl("text", { x: X(m[0]), y: H - 10, "text-anchor": m[2] });
+      t.textContent = m[1];
+      svg.appendChild(t);
+    });
+
+    if (last < 0) {
+      var msg = svgEl("text", { x: W / 2, y: H / 2, "text-anchor": "middle" });
+      msg.textContent = "Your line starts here on October 1.";
+      svg.appendChild(msg);
+      box.appendChild(svg);
+      return;
+    }
+
+    var pts = [], avg = [], i, j;
+    for (i = 0; i <= last; i++) {
+      pts.push(X(i) + "," + Y(ratio(i)));
+      var sum = 0, n = 0;
+      for (j = Math.max(0, i - 6); j <= i; j++) { sum += ratio(j); n++; }
+      avg.push(X(i) + "," + Y(sum / n));
+    }
+    if (last > 0) {
+      svg.appendChild(svgEl("polygon", { "class": "area-daily", points: X(0) + "," + Y(0) + " " + pts.join(" ") + " " + X(last) + "," + Y(0) }));
+      svg.appendChild(svgEl("polyline", { "class": "line-daily", points: pts.join(" ") }));
+      svg.appendChild(svgEl("polyline", { "class": "line-avg", points: avg.join(" ") }));
+    }
+    for (i = 0; i <= last; i++) {
+      (function (i) {
+        var g = svgEl("g", {});
+        var c = svgEl("circle", { cx: X(i), cy: Y(ratio(i)), r: i === selected ? 6 : 3.5, "class": "pt" + (i === selected ? " sel" : "") });
+        var hit = svgEl("circle", { cx: X(i), cy: Y(ratio(i)), r: 9, "class": "hit" });
+        var title = svgEl("title", {});
+        title.textContent = fmtShort(i) + ": " + doneIds(i).length + " of " + state.habits.length + " done";
+        hit.appendChild(title);
+        hit.addEventListener("click", function () { selected = i; renderAll(); });
+        g.appendChild(c); g.appendChild(hit); svg.appendChild(g);
+      })(i);
+    }
+    box.appendChild(svg);
+  }
+
+  function renderMatrix() {
+    var root = document.getElementById("matrix");
+    root.innerHTML = "";
+    var i;
+    var head = document.createElement("div"); head.className = "mrow mhead";
+    var hl = document.createElement("div"); hl.className = "mlabel"; head.appendChild(hl);
+    for (i = 0; i < DAYS; i++) {
+      var hc = document.createElement("div"); hc.className = "mc";
+      var d = dateAt(i);
+      if (d.getDate() === 1) {
+        var s = document.createElement("span");
+        s.textContent = d.toLocaleDateString("en-US", { month: "short" });
+        hc.appendChild(s);
+      }
+      head.appendChild(hc);
+    }
+    root.appendChild(head);
+    var nums = document.createElement("div"); nums.className = "mrow mhead mdays";
+    var nl = document.createElement("div"); nl.className = "mlabel"; nums.appendChild(nl);
+    for (i = 0; i < DAYS; i++) {
+      var nc = document.createElement("div"); nc.className = "mc" + (i === todayIdx ? " today" : "");
+      var ns = document.createElement("span"); ns.textContent = dateAt(i).getDate();
+      nc.appendChild(ns); nums.appendChild(nc);
+    }
+    root.appendChild(nums);
+    if (!state.habits.length) {
+      var e = document.createElement("p"); e.className = "empty"; e.textContent = "Add a habit to see it here."; root.appendChild(e); return;
+    }
+    var toFocus = null;
+    state.habits.forEach(function (hb) {
+      var row = document.createElement("div"); row.className = "mrow";
+      var count = 0;
+      for (var q = 0; q <= last; q++) if (doneIds(q).indexOf(hb.id) !== -1) count++;
+      var lab = document.createElement("div"); lab.className = "mlabel"; lab.title = hb.name;
+      var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = hb.name;
+      var mini = document.createElement("div"); mini.className = "mini";
+      var fill = document.createElement("b");
+      fill.style.width = (last >= 0 ? Math.round(count / (last + 1) * 100) : 0) + "%";
+      mini.appendChild(fill);
+      var sm = document.createElement("small"); sm.textContent = count + " of " + Math.max(last + 1, 0) + " days";
+      lab.appendChild(nm); lab.appendChild(mini); lab.appendChild(sm);
+      row.appendChild(lab);
+      for (var k = 0; k < DAYS; k++) {
+        (function (k) {
+          var c = document.createElement("button");
+          c.type = "button";
+          var future = k > last;
+          var locked = k !== editable;
+          var on = !future && doneIds(k).indexOf(hb.id) !== -1;
+          c.className = "mc" + (on ? " on" : "") + (future ? " future" : "") + (k === selected ? " col-sel" : "") + (k === todayIdx ? " today" : "");
+          c.textContent = "\u2713";
+          c.setAttribute("role", "checkbox");
+          c.setAttribute("aria-checked", on ? "true" : "false");
+          c.setAttribute("aria-label", hb.name + ", " + fmtShort(k));
+          c.title = fmtShort(k) + ": " + hb.name + (locked && !future ? " (locked)" : "");
+          if (locked) c.disabled = true;
+          else c.addEventListener("click", function () {
+            selected = k;
+            lastFocus = hb.id + "|" + k;
+            toggle(k, hb.id);
+          });
+          if (lastFocus === hb.id + "|" + k) toFocus = c;
+          row.appendChild(c);
+        })(k);
+      }
+      root.appendChild(row);
+    });
+    if (toFocus) { toFocus.focus({ preventScroll: true }); }
+    lastFocus = null;
+  }
+
+  function renderEditor() {
+    var ed = document.getElementById("habit-editor");
+    ed.innerHTML = "";
+    if (!state.habits.length) { var e = document.createElement("p"); e.className = "empty"; e.textContent = "No habits yet."; ed.appendChild(e); return; }
+    state.habits.forEach(function (hb) {
+      var row = document.createElement("div"); row.className = "edit-row";
+      var s = document.createElement("span"); s.textContent = hb.name;
+      var rm = document.createElement("button"); rm.className = "quiet"; rm.textContent = "Remove";
+      rm.setAttribute("aria-label", "Remove " + hb.name);
+      rm.addEventListener("click", function () {
+        state.habits = state.habits.filter(function (x) { return x.id !== hb.id; });
+        save(); renderAll();
+      });
+      row.appendChild(s); row.appendChild(rm); ed.appendChild(row);
+    });
+  }
+
+  function renderAll() { renderStatus(); renderStats(); renderOverall(); renderNotice(); renderChart(); renderMatrix(); renderEditor(); }
+
+  function addHabit() {
+    var input = document.getElementById("new-habit");
+    var name = input.value.trim();
+    if (!name) return;
+    state.habits.push({ id: "h" + Date.now(), name: name });
+    input.value = ""; save(); renderAll(); input.focus();
+  }
+  document.getElementById("add-btn").addEventListener("click", addHabit);
+  document.getElementById("new-habit").addEventListener("keydown", function (e) { if (e.key === "Enter") addHabit(); });
+
+  var resetBtn = document.getElementById("reset-btn"), resetTimer = null;
+  resetBtn.addEventListener("click", function () {
+    if (resetBtn.dataset.armed === "1") {
+      clearTimeout(resetTimer);
+      state = defaults(); save();
+      resetBtn.dataset.armed = "0"; resetBtn.textContent = "Reset challenge";
+      renderAll();
+    } else {
+      resetBtn.dataset.armed = "1";
+      resetBtn.textContent = "Click again to erase all progress";
+      resetTimer = setTimeout(function () { resetBtn.dataset.armed = "0"; resetBtn.textContent = "Reset challenge"; }, 4000);
+    }
+  });
+
+  function checkDay() {
+    if (dayIndex(new Date()) !== todayIdx) { setDay(); renderAll(); }
+  }
+  setInterval(checkDay, 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDay(); });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
